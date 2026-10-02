@@ -22,7 +22,7 @@
 ## list items matched to their data.
 ##
 ## Attributes live in `Attribute` and event handlers in `Event`.
-import Attribute exposing [Attribute]
+import Attribute
 
 Html(msg) := [
     Text(Str),

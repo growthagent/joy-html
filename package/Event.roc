@@ -17,9 +17,9 @@
 ## To stop an event at its element or suppress the browser default, chain
 ## the `Attribute` modifiers on any handler:
 ## `Event.on_click(Ignored).stop_propagation()`.
-import Attribute exposing [Attribute]
+import Attribute
 # Html is only used by the expects at the bottom.
-import Html exposing [Html]
+import Html
 
 Event := [].{
     ## Send `msg` on click.
