@@ -156,18 +156,38 @@ Attribute(msg) := [
 	## SSR text for one attribute, used by `Html.render`. String attributes
 	## render as `name="escaped value"`, boolean ones as the bare name when
 	## true and nothing when false. Handlers and visibility observers are a
-	## client-side concern and render as "", which the caller drops.
+	## client-side concern and render as "", which the caller drops. So does
+	## an attribute Joy's client refuses to set (see `ssr_allowed`): the
+	## server's page carries exactly what the client would.
 	to_ssr_str : Attribute(msg) -> Str
 	to_ssr_str = |attr|
 		match attr {
-			String(key_, val) => "${key_}=\"${escape_attr_value(val)}\""
-			Boolean(key_, val) => if val {
-				key_
-			} else {
-				""
-			}
+			String(key_, val) =>
+				if ssr_allowed(key_, val) {
+					"${key_}=\"${escape_attr_value(val)}\""
+				} else {
+					""
+				}
+			Boolean(key_, val) =>
+				if val and ssr_allowed(key_, "") {
+					key_
+				} else {
+					""
+				}
 			_ => ""
 		}
+
+	## The value an attribute list sets: its last `value` string attribute,
+	## the one a client applying them in order would end on. `Html.render`
+	## writes a textarea's value as its text, because HTML has no value
+	## attribute for one.
+	value_of : List(Attribute(msg)) -> Try(Str, [NoValue])
+	value_of = |attrs| last_value(attrs, 0, Err(NoValue))
+
+	## The attribute list without its `value` string attributes (see
+	## `value_of`).
+	without_value : List(Attribute(msg)) -> List(Attribute(msg))
+	without_value = |attrs| drop_values(attrs, 0, [])
 
 	## Stop the event here instead of letting it bubble on to ancestor
 	## handlers: `on_click(Ignored).stop_propagation()`. This is what keeps a
@@ -656,6 +676,75 @@ Attribute(msg) := [
 	on_visible = |msg, opts| VisibilityHandler(opts.root_margin, opts.rearm_key, Box.box(msg))
 }
 
+## Whether SSR may write the attribute `key` with value `val`. The rule is
+## the one Joy's client runtime applies to every attribute it sets
+## (attrAllowed in its runtime.js), so a page reads the same before the app
+## boots, after, and without JavaScript at all. An `on*` attribute runs its
+## value as script and a `javascript:` URL runs when followed, and views
+## routinely put user data in attribute values. Browsers ignore whitespace
+## and control characters when they read a URL's scheme, and so does the
+## check.
+ssr_allowed : Str, Str -> Bool
+ssr_allowed = |key, val| {
+	lower = key.with_ascii_lowercased()
+	if lower.starts_with("on") {
+		Bool.False
+	} else if url_attrs.contains(lower) {
+		!(javascript_url(Str.to_utf8(val), 0, 0))
+	} else {
+		Bool.True
+	}
+}
+
+## The attributes whose value the browser follows as a URL.
+url_attrs : List(Str)
+url_attrs = ["href", "src", "action", "formaction", "xlink:href"]
+
+javascript_scheme : List(U8)
+javascript_scheme = Str.to_utf8("javascript:")
+
+## Whether `bytes` from `idx` spell "javascript:", any case, with every
+## byte up to space skipped. `matched` counts the scheme bytes found so far.
+## Recursion, like `keep_name_bytes`, for the same compiler reason.
+javascript_url : List(U8), U64, U64 -> Bool
+javascript_url = |bytes, idx, matched|
+	if matched == javascript_scheme.len() {
+		Bool.True
+	} else {
+		match bytes.get(idx) {
+			Ok(b) =>
+				if b <= 0x20 {
+					javascript_url(bytes, idx + 1, matched)
+				} else if ascii_lower(b) == (javascript_scheme.get(matched) ?? 0) {
+					javascript_url(bytes, idx + 1, matched + 1)
+				} else {
+					Bool.False
+				}
+			Err(_) => Bool.False
+		}
+	}
+
+ascii_lower : U8 -> U8
+ascii_lower = |b| if b >= 'A' and b <= 'Z' { b + 32 } else { b }
+
+## Recursive scan under `value_of`.
+last_value : List(Attribute(msg)), U64, Try(Str, [NoValue]) -> Try(Str, [NoValue])
+last_value = |attrs, idx, found|
+	match attrs.get(idx) {
+		Ok(String(key_, val)) if key_.caseless_ascii_equals("value") => last_value(attrs, idx + 1, Ok(val))
+		Ok(_) => last_value(attrs, idx + 1, found)
+		Err(_) => found
+	}
+
+## Recursive filter under `without_value`.
+drop_values : List(Attribute(msg)), U64, List(Attribute(msg)) -> List(Attribute(msg))
+drop_values = |attrs, idx, acc|
+	match attrs.get(idx) {
+		Ok(String(key_, _)) if key_.caseless_ascii_equals("value") => drop_values(attrs, idx + 1, acc)
+		Ok(attr) => drop_values(attrs, idx + 1, acc.append(attr))
+		Err(_) => acc
+	}
+
 ## Escape an attribute value for SSR inside double quotes. Only `&` and `"`
 ## need rewriting there. There is no Str.replace_each to call, so replacement
 ## is split_on plus join_with, `&` first so the ampersands it introduces are
@@ -1026,3 +1115,32 @@ expect {
 # like the plain handlers.
 expect Attribute.to_ssr_str(Attribute.on_click("clicked").stop_propagation()) == ""
 expect Attribute.to_ssr_str(Attribute.on_input(|s| "typed:${s}").prevent_default()) == ""
+
+# SSR writes exactly what Joy's client sets: no event handler attributes and
+# no javascript: URLs (see ssr_allowed).
+expect Attribute.to_ssr_str(Attribute.attribute("onclick", "steal()")) == ""
+expect Attribute.to_ssr_str(Attribute.attribute("ONMOUSEOVER", "steal()")) == ""
+expect Attribute.to_ssr_str(Attribute.attribute("one", "x")) == ""
+expect Attribute.to_ssr_str(Attribute.boolean("onfoo", Bool.True)) == ""
+expect Attribute.to_ssr_str(Attribute.href("javascript:alert(1)")) == ""
+expect Attribute.to_ssr_str(Attribute.href("JavaScript:alert(1)")) == ""
+expect Attribute.to_ssr_str(Attribute.href(" \tjava\nscript:alert(1)")) == ""
+expect Attribute.to_ssr_str(Attribute.href("\u(1)javascript:alert(1)")) == ""
+expect Attribute.to_ssr_str(Attribute.src("javascript:alert(1)")) == ""
+expect Attribute.to_ssr_str(Attribute.action("javascript:alert(1)")) == ""
+expect Attribute.to_ssr_str(Attribute.attribute("formaction", "javascript:alert(1)")) == ""
+expect Attribute.to_ssr_str(Attribute.attribute("xlink:href", "javascript:alert(1)")) == ""
+
+# Everything else still renders: the scheme check needs the colon, only the
+# URL attributes are checked, and a data attribute merely containing "on"
+# is fine.
+expect Attribute.to_ssr_str(Attribute.href("https://example.com/")) == "href=\"https://example.com/\""
+expect Attribute.to_ssr_str(Attribute.href("/javascript-guide")) == "href=\"/javascript-guide\""
+expect Attribute.to_ssr_str(Attribute.href("javascript")) == "href=\"javascript\""
+expect Attribute.to_ssr_str(Attribute.title("javascript:alert(1)")) == "title=\"javascript:alert(1)\""
+expect Attribute.to_ssr_str(Attribute.attribute("data-on", "x")) == "data-on=\"x\""
+expect Attribute.to_ssr_str(Attribute.attribute("xlink:href", "#dot")) == "xlink:href=\"#dot\""
+
+expect Attribute.value_of([Attribute.class("a"), Attribute.value("one"), Attribute.value("two")]) == Ok("two")
+expect Attribute.value_of([Attribute.class("a")]) == Err(NoValue)
+expect Attribute.without_value([Attribute.value("x"), Attribute.class("a")]).len() == 1

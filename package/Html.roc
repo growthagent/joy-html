@@ -311,9 +311,13 @@ Html(msg) := [
     template : List(Attribute(msg)), List(Html(msg)) -> Html(msg)
     template = |attrs, children| Element("template", attrs, children)
 
-    ## Unlike `input`, a textarea's initial content is a text child rather
-    ## than `Attribute.value`: `textarea([], [text(model.draft)])`. Whitespace
-    ## inside the tag is significant, so do not pad the text for readability.
+    ## Give a textarea its value with `Attribute.value`, like an input:
+    ## `textarea([value(model.draft), on_input(|s| Typed(s))], [])`. The
+    ## client then keeps what it shows in step with the model, and `render`
+    ## writes the value as the textarea's text, which is how HTML carries
+    ## one. A text child only sets the initial content, which the browser
+    ## stops following once the user has typed. Whitespace inside the tag is
+    ## significant, so do not pad the text for readability.
     textarea : List(Attribute(msg)), List(Html(msg)) -> Html(msg)
     textarea = |attrs, children| Element("textarea", attrs, children)
 
@@ -431,9 +435,34 @@ render_node = |h|
                 # instead.
                 children_str = neutralize_end_tags(style_children_str(children, 0, ""))
                 "<${open_tag(tag, attrs)}>${children_str}</${tag}>"
+            } else if tag.caseless_ascii_equals("textarea") {
+                # HTML has no value attribute for a textarea, its text is
+                # the value, so a declared value is written as the text (the
+                # browser shows it before any script runs, and Joy's client
+                # claims it as the value). Children, if the view has any,
+                # are the text instead, and the value goes nowhere.
+                content =
+                    match Attribute.value_of(attrs) {
+                        Ok(value) if children.is_empty() => escape_text(value)
+                        _ => render_children(children, 0, "")
+                    }
+                "<${open_tag(tag, Attribute.without_value(attrs))}>${keep_leading_newline(content)}</${tag}>"
+            } else if tag.caseless_ascii_equals("pre") or tag.caseless_ascii_equals("listing") {
+                "<${open_tag(tag, attrs)}>${keep_leading_newline(render_children(children, 0, ""))}</${tag}>"
             } else {
                 "<${open_tag(tag, attrs)}>${render_children(children, 0, "")}</${tag}>"
             }
+    }
+
+## The HTML parser drops one newline right after <pre>, <listing> and
+## <textarea>, so content that starts with a newline gets a second one in
+## front, and the parsed text comes out exactly as the view wrote it.
+keep_leading_newline : Str -> Str
+keep_leading_newline = |content|
+    if content.starts_with("\n") {
+        "\n${content}"
+    } else {
+        content
     }
 
 ## Render every child in order and concatenate the results.
@@ -641,3 +670,25 @@ expect
 expect
     view_render(Html.div([Attribute.on_click("inner")], [Html.text("hello")]).map(|s| "outer:${s}"))
     == "<div>hello</div>"
+
+# A refused attribute leaves no trace in the markup.
+expect
+    view_render(Html.a([Attribute.href("javascript:alert(1)"), Attribute.class("x")], [Html.text("go")]))
+    == "<a class=\"x\">go</a>"
+
+# A textarea's value is written as its text, escaped, and the attribute,
+# which HTML would ignore, is left out.
+expect view_render(Html.textarea([Attribute.class("c"), Attribute.value("a < b & c")], [])) == "<textarea class=\"c\">a &lt; b &amp; c</textarea>"
+expect view_render(Html.textarea([Attribute.value("")], [])) == "<textarea></textarea>"
+
+# Children win over a value: they are the text, and the value goes nowhere.
+expect view_render(Html.textarea([Attribute.value("v")], [Html.text("kid")])) == "<textarea>kid</textarea>"
+expect view_render(Html.textarea([], [Html.text("kid")])) == "<textarea>kid</textarea>"
+
+# The parser drops one newline right after these tags, so a leading one is
+# doubled and survives.
+expect view_render(Html.textarea([Attribute.value("\nline")], [])) == "<textarea>\n\nline</textarea>"
+expect view_render(Html.pre([], [Html.text("\ncode")])) == "<pre>\n\ncode</pre>"
+expect view_render(Html.pre([], [Html.text("code\n")])) == "<pre>code\n</pre>"
+expect view_render(Html.element("LISTING", [], [Html.text("\nx")])) == "<LISTING>\n\nx</LISTING>"
+expect view_render(Html.div([], [Html.text("\nx")])) == "<div>\nx</div>"
