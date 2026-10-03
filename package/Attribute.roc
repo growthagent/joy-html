@@ -725,7 +725,11 @@ javascript_url = |bytes, idx, matched|
 	}
 
 ascii_lower : U8 -> U8
-ascii_lower = |b| if b >= 'A' and b <= 'Z' { b + 32 } else { b }
+ascii_lower = |b| if b >= 'A' and b <= 'Z' {
+	b + 32
+} else {
+	b
+}
 
 ## Recursive scan under `value_of`.
 last_value : List(Attribute(msg)), U64, Try(Str, [NoValue]) -> Try(Str, [NoValue])

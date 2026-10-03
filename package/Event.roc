@@ -22,34 +22,35 @@ import Attribute
 import Html
 
 Event := [].{
-    ## Send `msg` on click.
-    on_click : msg -> Attribute(msg)
-    on_click = |msg| Attribute.on_click(msg)
 
-    ## Send the message produced from the input's value on every keystroke.
-    on_input : (Str -> msg) -> Attribute(msg)
-    on_input = |to_msg| Attribute.on_input(to_msg)
+	## Send `msg` on click.
+	on_click : msg -> Attribute(msg)
+	on_click = |msg| Attribute.on_click(msg)
 
-    ## Send the message produced from the control's `value` when it commits a
-    ## change. Reads `value` for every element type, so one handler on a
-    ## radio group receives the selected radio's value. For a checkbox's
-    ## on/off state use `on_check`.
-    on_change : (Str -> msg) -> Attribute(msg)
-    on_change = |to_msg| Attribute.on_change(to_msg)
+	## Send the message produced from the input's value on every keystroke.
+	on_input : (Str -> msg) -> Attribute(msg)
+	on_input = |to_msg| Attribute.on_input(to_msg)
 
-    ## Send the message produced from a checkbox's checked state when it
-    ## changes: `on_check(|now| UserToggled(now))`. Don't combine with
-    ## `on_change` on the same element, see `Attribute.on_check`.
-    on_check : (Bool -> msg) -> Attribute(msg)
-    on_check = |to_msg| Attribute.on_check(to_msg)
+	## Send the message produced from the control's `value` when it commits a
+	## change. Reads `value` for every element type, so one handler on a
+	## radio group receives the selected radio's value. For a checkbox's
+	## on/off state use `on_check`.
+	on_change : (Str -> msg) -> Attribute(msg)
+	on_change = |to_msg| Attribute.on_change(to_msg)
 
-    ## Send `msg` when a touch starts on this element.
-    on_touchstart : msg -> Attribute(msg)
-    on_touchstart = |msg| Attribute.on("touchstart", msg)
+	## Send the message produced from a checkbox's checked state when it
+	## changes: `on_check(|now| UserToggled(now))`. Don't combine with
+	## `on_change` on the same element, see `Attribute.on_check`.
+	on_check : (Bool -> msg) -> Attribute(msg)
+	on_check = |to_msg| Attribute.on_check(to_msg)
 
-    ## Send `msg` when a touch ends on this element.
-    on_touchend : msg -> Attribute(msg)
-    on_touchend = |msg| Attribute.on("touchend", msg)
+	## Send `msg` when a touch starts on this element.
+	on_touchstart : msg -> Attribute(msg)
+	on_touchstart = |msg| Attribute.on("touchstart", msg)
+
+	## Send `msg` when a touch ends on this element.
+	on_touchend : msg -> Attribute(msg)
+	on_touchend = |msg| Attribute.on("touchend", msg)
 }
 
 # --- roc test (run via `roc test --main=package/main.roc package/Event.roc`) ---
@@ -76,8 +77,8 @@ expect !Attribute.stops_propagation(Event.on_change(|s| "chose:${s}"))
 # One modifier leaves the other flag alone, and chaining sets both.
 expect !Attribute.prevents_default(Event.on_click("clicked").stop_propagation())
 expect {
-    both = Event.on_click("clicked").stop_propagation().prevent_default()
-    Attribute.stops_propagation(both) and Attribute.prevents_default(both)
+	both = Event.on_click("clicked").stop_propagation().prevent_default()
+	Attribute.stops_propagation(both) and Attribute.prevents_default(both)
 }
 
 # Non-event attributes report False rather than failing to match, and the
@@ -89,33 +90,33 @@ expect Attribute.stops_propagation(Event.on_check(|b| if b "on" else "off").stop
 expect Attribute.stops_propagation(Event.on_touchstart("start").stop_propagation())
 
 expect
-    Html.render(Html.button([Event.on_click("clicked")], [Html.text("Go")]))
-    == "<button>Go</button>"
+	Html.render(Html.button([Event.on_click("clicked")], [Html.text("Go")]))
+		== "<button>Go</button>"
 
 expect
-    Html.render(Html.button([Event.on_click("clicked").stop_propagation()], [Html.text("Go")]))
-    == "<button>Go</button>"
+	Html.render(Html.button([Event.on_click("clicked").stop_propagation()], [Html.text("Go")]))
+		== "<button>Go</button>"
 
 expect
-    Html.render(Html.input([Event.on_input(|s| "typed:${s}"), Attribute.value("v")]))
-    == "<input value=\"v\" />"
+	Html.render(Html.input([Event.on_input(|s| "typed:${s}"), Attribute.value("v")]))
+		== "<input value=\"v\" />"
 
 expect
-    Html.render(Html.input([Event.on_input(|s| "typed:${s}").stop_propagation()]))
-    == "<input />"
+	Html.render(Html.input([Event.on_input(|s| "typed:${s}").stop_propagation()]))
+		== "<input />"
 
 expect
-    Html.render(Html.select([Event.on_change(|s| "chose:${s}")], []))
-    == "<select></select>"
+	Html.render(Html.select([Event.on_change(|s| "chose:${s}")], []))
+		== "<select></select>"
 
 expect
-    Html.render(Html.select([Event.on_change(|s| "chose:${s}").prevent_default()], []))
-    == "<select></select>"
+	Html.render(Html.select([Event.on_change(|s| "chose:${s}").prevent_default()], []))
+		== "<select></select>"
 
 expect
-    Html.render(Html.input([Event.on_check(|b| if b "on" else "off"), Attribute.type("checkbox")]))
-    == "<input type=\"checkbox\" />"
+	Html.render(Html.input([Event.on_check(|b| if b "on" else "off"), Attribute.type("checkbox")]))
+		== "<input type=\"checkbox\" />"
 
 expect
-    Html.render(Html.div([Event.on_touchstart("start"), Event.on_touchend("end")], [Html.text("t")]))
-    == "<div>t</div>"
+	Html.render(Html.div([Event.on_touchstart("start"), Event.on_touchend("end")], [Html.text("t")]))
+		== "<div>t</div>"
