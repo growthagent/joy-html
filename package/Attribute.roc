@@ -184,6 +184,11 @@ Attribute(msg) := [
 	value_of : List(Attribute(msg)) -> Try(Str, [NoValue])
 	value_of = |attrs| last_value(attrs, 0, Err(NoValue))
 
+	## The last string attribute named `name`, in any case, the way
+	## `Html.document` reads a bundle root's `data-joy-bundle`.
+	string_of : List(Attribute(msg)), Str -> Try(Str, [NoValue])
+	string_of = |attrs, name| last_string(attrs, name, 0, Err(NoValue))
+
 	## The attribute list without its `value` string attributes (see
 	## `value_of`).
 	without_value : List(Attribute(msg)) -> List(Attribute(msg))
@@ -737,6 +742,15 @@ last_value = |attrs, idx, found|
 	match attrs.get(idx) {
 		Ok(String(key_, val)) if key_.caseless_ascii_equals("value") => last_value(attrs, idx + 1, Ok(val))
 		Ok(_) => last_value(attrs, idx + 1, found)
+		Err(_) => found
+	}
+
+## Recursive search under `string_of`.
+last_string : List(Attribute(msg)), Str, U64, Try(Str, [NoValue]) -> Try(Str, [NoValue])
+last_string = |attrs, name, idx, found|
+	match attrs.get(idx) {
+		Ok(String(key_, val)) if key_.caseless_ascii_equals(name) => last_string(attrs, name, idx + 1, Ok(val))
+		Ok(_) => last_string(attrs, name, idx + 1, found)
 		Err(_) => found
 	}
 
