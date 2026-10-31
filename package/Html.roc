@@ -136,6 +136,38 @@ Html(msg) := [
 	ssr_document : Html(msg) -> Str
 	ssr_document = |h| "<!DOCTYPE html>${render_node(h)}"
 
+	## The URLs of Joy's files a page loads: the loader's, the runtime's and
+	## each bundle's wasm by the bundle's id. A server learns them from its
+	## build's assets.json, and a Joy project's generated/ package makes the
+	## record (`Names.joy_files`).
+	JoyFiles : { loader : Str, runtime : Str, wasm : Str -> Str }
+
+	## A full SSR page that runs Joy bundles. Each bundle root, an element
+	## with `data-joy-bundle`, gets its wasm's URL in `data-joy-wasm`, and the
+	## end of the head gets the loader as a module script and hints for the
+	## runtime and each bundle's wasm, so the browser fetches them alongside
+	## the loader instead of one after another. The page names no file of
+	## Joy's itself. A page without a root renders as `ssr_document` does.
+	##
+	## A wasm hint is crossorigin because the runtime fetches the wasm with a
+	## CORS request, and a hint in another mode would not be used.
+	document : Html.JoyFiles, Html(msg) -> Str
+	document = |files, h| {
+		(tree, ids) = with_wasm(files, h, [])
+		if ids.is_empty() {
+			"<!DOCTYPE html>${render_node(tree)}"
+		} else {
+			hints =
+				[Element("link", [Attribute.rel("modulepreload"), Attribute.href(files.runtime)], [])]
+					.concat(ids.map(|id| Element("link", [Attribute.rel("preload"), Attribute.href((files.wasm)(id)), Attribute.attribute("as", "fetch"), Attribute.crossorigin("anonymous")], [])))
+					.append(Element("script", [Attribute.type("module"), Attribute.src(files.loader)], []))
+			match into_head(tree, hints) {
+				Ok(with_hints) => "<!DOCTYPE html>${render_node(with_hints)}"
+				Err(NoHead) => "<!DOCTYPE html>${render_children(hints, 0, "")}${render_node(tree)}"
+			}
+		}
+	}
+
 	# Regular elements
 
 	a : List(Attribute(msg)), List(Html(msg)) -> Html(msg)
@@ -455,6 +487,64 @@ render_node = |h|
 			}
 	}
 
+## `h` with each bundle root given its wasm's URL, unless it names one
+## already, and the ids of the roots' bundles in page order, each once. Lazy
+## regions are forced, as rendering forces them anyway.
+with_wasm : Html.JoyFiles, Html(msg), List(Str) -> (Html(msg), List(Str))
+with_wasm = |files, h, ids|
+	match h {
+		Lazy(thunk) => with_wasm(files, (Box.unbox(thunk))({}), ids)
+		Keyed(key, child) => {
+			(inner, found) = with_wasm(files, Box.unbox(child), ids)
+			(Keyed(key, Box.box(inner)), found)
+		}
+		Text(_) => (h, ids)
+		Element(tag, attrs, children) => {
+			(own_attrs, own_ids) =
+				match Attribute.string_of(attrs, "data-joy-bundle") {
+					Ok(id) => {
+						with_url =
+							match Attribute.string_of(attrs, "data-joy-wasm") {
+								Ok(_) => attrs
+								Err(_) => attrs.append(Attribute.data("joy-wasm", (files.wasm)(id)))
+							}
+						(with_url, if (ids.contains(id)) ids else ids.append(id))
+					}
+					Err(_) => (attrs, ids)
+				}
+			(own_children, all_ids) = children.fold(
+				([], own_ids),
+				|(done, found), child| {
+					(next, more) = with_wasm(files, child, found)
+					(done.append(next), more)
+				},
+			)
+			(Element(tag, own_attrs, own_children), all_ids)
+		}
+	}
+
+## `h` with `hints` at the end of its first `head` element.
+into_head : Html(msg), List(Html(msg)) -> Try(Html(msg), [NoHead])
+into_head = |h, hints|
+	match h {
+		Element(tag, attrs, children) if tag.caseless_ascii_equals("head") => Ok(Element(tag, attrs, children.concat(hints)))
+		Element(tag, attrs, children) => head_in_children(children, hints, 0).map_ok(|with_hints| Element(tag, attrs, with_hints))
+		Keyed(key, child) => into_head(Box.unbox(child), hints).map_ok(|inner| Keyed(key, Box.box(inner)))
+		_ => Err(NoHead)
+	}
+
+## `children` with `hints` in the first child that has a head.
+head_in_children : List(Html(msg)), List(Html(msg)), U64 -> Try(List(Html(msg)), [NoHead])
+head_in_children = |children, hints, idx|
+	match children.get(idx) {
+		Ok(child) =>
+			match into_head(child, hints) {
+				Ok(with_hints) => Ok(children.set(idx, with_hints) ?? children)
+				Err(NoHead) => head_in_children(children, hints, idx + 1)
+			}
+		Err(_) => Err(NoHead)
+	}
+
 ## The HTML parser drops one newline right after <pre>, <listing> and
 ## <textarea>, so content that starts with a newline gets a second one in
 ## front, and the parsed text comes out exactly as the view wrote it.
@@ -572,6 +662,39 @@ view_render = |h| Html.render(h)
 ## `ssr_document` pinned to a concrete msg type, as with `view_render`.
 view_document : Html(Str) -> Str
 view_document = |h| Html.ssr_document(h)
+
+## `document` pinned to a concrete msg type, with made-up hashed names.
+view_with_joy : Html(Str) -> Str
+view_with_joy = |h| Html.document({ loader: "/static/joy.1a.js", runtime: "/static/runtime.2b.js", wasm: |id| "/static/${id}/app.3c.wasm" }, h)
+
+## A page with a head, a title and `body` in its body.
+page_with : List(Html(Str)) -> Html(Str)
+page_with = |body| Html.html([], [Html.head([], [Html.title([], [Html.text("t")])]), Html.body([], body)])
+
+# A root gets its wasm, and the head ends with the hints and the loader.
+expect view_with_joy(page_with([Html.div([Attribute.data("joy-bundle", "cart"), Attribute.data("joy-flags", "{}")], [Html.text("x")])])) == "<!DOCTYPE html><html><head><title>t</title><link rel=\"modulepreload\" href=\"/static/runtime.2b.js\" /><link rel=\"preload\" href=\"/static/cart/app.3c.wasm\" as=\"fetch\" crossorigin=\"anonymous\" /><script type=\"module\" src=\"/static/joy.1a.js\"></script></head><body><div data-joy-bundle=\"cart\" data-joy-flags=\"{}\" data-joy-wasm=\"/static/cart/app.3c.wasm\">x</div></body></html>"
+
+# A page without a root is ssr_document.
+expect view_with_joy(page_with([Html.div([], [Html.text("x")])])) == view_document(page_with([Html.div([], [Html.text("x")])]))
+
+# One hint per bundle in page order, roots inside lazy and keyed regions,
+# and a root that names its wasm keeps it.
+expect {
+	document = view_with_joy(page_with([
+		Html.div([Attribute.data("joy-bundle", "b")], []),
+		Html.lazy(|id| Html.div([Attribute.data("joy-bundle", id)], []), "a"),
+		Html.keyed("k", Html.div([Attribute.data("joy-bundle", "b")], [])),
+		Html.div([Attribute.data("joy-bundle", "c"), Attribute.data("joy-wasm", "mine.wasm")], []),
+	]))
+	hints = Str.split_on(document, "<link rel=\"preload\" href=\"").drop_first(1).map(|part| Str.split_first(part, "\"").map_ok(|{ before, .. }| before) ?? "")
+	hints == ["/static/b/app.3c.wasm", "/static/a/app.3c.wasm", "/static/c/app.3c.wasm"]
+	and Str.contains(document, "<div data-joy-bundle=\"a\" data-joy-wasm=\"/static/a/app.3c.wasm\"></div>")
+	and Str.contains(document, "<div data-joy-bundle=\"c\" data-joy-wasm=\"mine.wasm\"></div>")
+	and Str.split_on(document, "data-joy-wasm=").len() == 5
+}
+
+# Without a head the hints come first.
+expect Str.starts_with(view_with_joy(Html.div([Attribute.data("joy-bundle", "a")], [])), "<!DOCTYPE html><link rel=\"modulepreload\"")
 
 expect
 	view_render(Html.a([], [Html.span([], [Html.text("foo")])]))
