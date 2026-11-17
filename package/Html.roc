@@ -68,35 +68,35 @@ Html(msg) := [
 	##
 	## `lazy2` through `lazy8` take more inputs. Past eight, pass a record.
 	lazy : (a -> Html(msg)), a -> Html(msg)
-	lazy = |view, a| Lazy(Box.box(|_| view(a)))
+	lazy = |view, arg| Lazy(Box.box(|_| view(arg)))
 
 	## `lazy` for a view of two inputs. See `lazy`.
 	lazy2 : (a, b -> Html(msg)), a, b -> Html(msg)
-	lazy2 = |view, a, b| Lazy(Box.box(|_| view(a, b)))
+	lazy2 = |view, arg, b| Lazy(Box.box(|_| view(arg, b)))
 
 	## `lazy` for a view of three inputs. See `lazy`.
 	lazy3 : (a, b, c -> Html(msg)), a, b, c -> Html(msg)
-	lazy3 = |view, a, b, c| Lazy(Box.box(|_| view(a, b, c)))
+	lazy3 = |view, arg, b, c| Lazy(Box.box(|_| view(arg, b, c)))
 
 	## `lazy` for a view of four inputs. See `lazy`.
 	lazy4 : (a, b, c, d -> Html(msg)), a, b, c, d -> Html(msg)
-	lazy4 = |view, a, b, c, d| Lazy(Box.box(|_| view(a, b, c, d)))
+	lazy4 = |view, arg, b, c, d| Lazy(Box.box(|_| view(arg, b, c, d)))
 
 	## `lazy` for a view of five inputs. See `lazy`.
 	lazy5 : (a, b, c, d, e -> Html(msg)), a, b, c, d, e -> Html(msg)
-	lazy5 = |view, a, b, c, d, e| Lazy(Box.box(|_| view(a, b, c, d, e)))
+	lazy5 = |view, arg, b, c, d, e| Lazy(Box.box(|_| view(arg, b, c, d, e)))
 
 	## `lazy` for a view of six inputs. See `lazy`.
 	lazy6 : (a, b, c, d, e, f -> Html(msg)), a, b, c, d, e, f -> Html(msg)
-	lazy6 = |view, a, b, c, d, e, f| Lazy(Box.box(|_| view(a, b, c, d, e, f)))
+	lazy6 = |view, arg, b, c, d, e, f| Lazy(Box.box(|_| view(arg, b, c, d, e, f)))
 
 	## `lazy` for a view of seven inputs. See `lazy`.
 	lazy7 : (a, b, c, d, e, f, g -> Html(msg)), a, b, c, d, e, f, g -> Html(msg)
-	lazy7 = |view, a, b, c, d, e, f, g| Lazy(Box.box(|_| view(a, b, c, d, e, f, g)))
+	lazy7 = |view, arg, b, c, d, e, f, g| Lazy(Box.box(|_| view(arg, b, c, d, e, f, g)))
 
 	## `lazy` for a view of eight inputs. See `lazy`.
 	lazy8 : (a, b, c, d, e, f, g, h -> Html(msg)), a, b, c, d, e, f, g, h -> Html(msg)
-	lazy8 = |view, a, b, c, d, e, f, g, h| Lazy(Box.box(|_| view(a, b, c, d, e, f, g, h)))
+	lazy8 = |view, arg, b, c, d, e, f, g, h| Lazy(Box.box(|_| view(arg, b, c, d, e, f, g, h)))
 
 	## Keep a list item tied to its data when the list changes. Children with
 	## no key are matched by position, so removing the first row shifts every
