@@ -187,7 +187,7 @@ Attribute(msg) := [
 	## The last string attribute named `name`, in any case, the way
 	## `Html.document` reads a bundle root's `data-joy-bundle`.
 	string_of : List(Attribute(msg)), Str -> Try(Str, [NoValue])
-	string_of = |attrs, name| last_string(attrs, name, 0, Err(NoValue))
+	string_of = |attrs, attr_name| last_string(attrs, attr_name, 0, Err(NoValue))
 
 	## The attribute list without its `value` string attributes (see
 	## `value_of`).
